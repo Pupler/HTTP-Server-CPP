@@ -1,4 +1,3 @@
-// main.cpp
 #include <iostream>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -19,17 +18,71 @@
 
 namespace fs = std::filesystem;
 
+// Configuration class
+class Config {
+private:
+    std::string document_root = ".";
+    int port = 8080;
+    int max_threads = 10;
+    bool verbose = false;
+
+public:
+    static Config parseArgs(int argc, char* argv[]) {
+        Config config;
+        
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = argv[i];
+            
+            if (arg == "-p" || arg == "--port") {
+                if (i + 1 < argc) config.port = std::stoi(argv[++i]);
+            }
+            else if (arg == "-d" || arg == "--directory") {
+                if (i + 1 < argc) config.document_root = argv[++i];
+            }
+            else if (arg == "-v" || arg == "--verbose") {
+                config.verbose = true;
+            }
+            else if (arg == "-h" || arg == "--help") {
+                std::cout << "Usage: " << argv[0] << " [options]\n"
+                          << "Options:\n"
+                          << "  -p, --port PORT      Server port (default: 8080)\n"
+                          << "  -d, --directory DIR  Document root (default: .)\n"
+                          << "  -v, --verbose        Enable verbose logging\n"
+                          << "  -h, --help          Show this help\n";
+                exit(0);
+            }
+        }
+        
+        return config;
+    }
+    
+    // Getters
+    int getPort() const { return port; }
+    std::string getDocumentRoot() const { return document_root; }
+    bool isVerbose() const { return verbose; }
+};
+
 // Thread-safe logger
 class Logger {
 private:
     std::mutex log_mutex;
+    bool verbose = false;
+
 public:
+    void setVerbose(bool v) { verbose = v; }
+
     void log(const std::string& message) {
         std::lock_guard<std::mutex> lock(log_mutex);
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         std::cout << "[" << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S") << "] " 
                   << message << std::endl;
+    }
+
+    void debug(const std::string& message) {
+        if (verbose) {
+            log("[DEBUG] " + message);
+        }
     }
 };
 
@@ -115,9 +168,10 @@ private:
     std::string status;
     std::map<std::string, std::string> headers;
     std::string body;
+    std::string document_root;
 
 public:
-    HTTPResponse() {
+    HTTPResponse(const std::string& root = ".") : document_root(root) {
         headers["Server"] = "C++ HTTP Server 2.0";
         headers["Connection"] = "close";
     }
@@ -137,18 +191,20 @@ public:
     
     // Serve static files
     bool serveFile(const std::string& filepath) {
-        if (!fs::exists(filepath) || !fs::is_regular_file(filepath)) {
+        std::string full_path = document_root + filepath;
+        
+        if (!fs::exists(full_path) || !fs::is_regular_file(full_path)) {
             setStatus(404, "Not Found");
-            setBody("<h1>404 - File Not Found</h1>");
+            setBody("<h1>404 - File Not Found</h1><p>File: " + filepath + "</p>");
             return false;
         }
         
         try {
-            std::ifstream file(filepath, std::ios::binary);
+            std::ifstream file(full_path, std::ios::binary);
             if (!file) return false;
             
             // Determine content type
-            std::string extension = fs::path(filepath).extension().string();
+            std::string extension = fs::path(full_path).extension().string();
             std::map<std::string, std::string> mime_types = {
                 {".html", "text/html"},
                 {".css", "text/css"},
@@ -193,8 +249,11 @@ public:
 class Router {
 private:
     std::map<std::string, std::function<void(HTTPRequest&, HTTPResponse&)>> routes;
-    
+    std::string document_root;
+
 public:
+    Router(const std::string& root = ".") : document_root(root) {}
+
     void get(const std::string& path, std::function<void(HTTPRequest&, HTTPResponse&)> handler) {
         routes["GET " + path] = handler;
     }
@@ -211,14 +270,16 @@ public:
         }
         return false;
     }
+
+    std::string getDocumentRoot() const { return document_root; }
 };
 
 // Initialize routes
-Router setupRoutes() {
-    Router router;
+Router setupRoutes(const std::string& document_root) {
+    Router router(document_root);
     
     // Homepage
-    router.get("/", [](HTTPRequest& req, HTTPResponse& res) {
+    router.get("/", [&router](HTTPRequest& req, HTTPResponse& res) {
         res.setStatus(200, "OK");
         res.setHeader("Content-Type", "text/html");
         res.setBody(
@@ -235,6 +296,7 @@ Router setupRoutes() {
             "<li><a href='/files'>File Browser</a></li>"
             "<li><a href='/hello?name=Visitor'>Hello with params</a></li>"
             "</ul></div>"
+            "<p><strong>Document Root:</strong> " + router.getDocumentRoot() + "</p>"
             "<p><strong>Thread ID:</strong> " + 
             std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())) + "</p>"
             "</body></html>"
@@ -242,13 +304,14 @@ Router setupRoutes() {
     });
     
     // JSON API
-    router.get("/api", [](HTTPRequest& req, HTTPResponse& res) {
+    router.get("/api", [&router](HTTPRequest& req, HTTPResponse& res) {
         res.setStatus(200, "OK");
         res.setHeader("Content-Type", "application/json");
         res.setBody(
             "{\n"
             "  \"server\": \"C++ HTTP Server\",\n"
             "  \"version\": \"2.0\",\n"
+            "  \"document_root\": \"" + router.getDocumentRoot() + "\",\n"
             "  \"thread\": \"" + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())) + "\",\n"
             "  \"timestamp\": " + std::to_string(time(nullptr)) + ",\n"
             "  \"status\": \"running\"\n"
@@ -257,7 +320,7 @@ Router setupRoutes() {
     });
     
     // Statistics
-    router.get("/stats", [](HTTPRequest& req, HTTPResponse& res) {
+    router.get("/stats", [&router](HTTPRequest& req, HTTPResponse& res) {
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - stats.start_time);
             
@@ -272,24 +335,24 @@ Router setupRoutes() {
             "<p><strong>Success Responses:</strong> " + std::to_string(stats.success_responses) + "</p>"
             "<p><strong>Error Responses:</strong> " + std::to_string(stats.error_responses) + "</p>"
             "<p><strong>Uptime:</strong> " + std::to_string(uptime.count()) + " seconds</p>"
-            "<p><strong>Server Start:</strong> " + std::to_string(std::chrono::duration_cast<std::chrono::hours>(uptime).count()) + " hours</p>"
+            "<p><strong>Document Root:</strong> " + router.getDocumentRoot() + "</p>"  // ← ТУТ ВИКОРИСТОВУЄТЬСЯ router
             "</div></body></html>"
         );
     });
     
     // File browser
-    router.get("/files", [](HTTPRequest& req, HTTPResponse& res) {
+    router.get("/files", [&router](HTTPRequest& req, HTTPResponse& res) {
         std::string html = "<html><head><title>File Browser</title></head><body>"
-                          "<h1>📁 File Browser</h1><ul>";
+                        "<h1>📁 File Browser - " + router.getDocumentRoot() + "</h1><ul>";
         
         try {
-            for (const auto& entry : fs::directory_iterator(".")) {
+            for (const auto& entry : fs::directory_iterator(router.getDocumentRoot())) {
                 std::string filename = entry.path().filename().string();
                 std::string type = entry.is_directory() ? "📁" : "📄";
                 html += "<li>" + type + " <a href='/static/" + filename + "'>" + filename + "</a></li>";
             }
         } catch (...) {
-            html += "<li>Error reading directory</li>";
+            html += "<li>Error reading directory: " + router.getDocumentRoot() + "</li>";
         }
         
         html += "</ul></body></html>";
@@ -299,11 +362,14 @@ Router setupRoutes() {
     });
     
     // Static file serving
-    router.get("/static", [](HTTPRequest& req, HTTPResponse& res) {
-        std::string filepath = "." + req.path.substr(7); // Remove "/static"
-        if (!res.serveFile(filepath)) {
+    router.get("/static", [&router](HTTPRequest& req, HTTPResponse& res) {
+        std::string filepath = req.path.substr(7); // Remove "/static"
+        HTTPResponse file_response(router.getDocumentRoot());
+        if (!file_response.serveFile(filepath)) {
             res.setStatus(404, "Not Found");
             res.setBody("File not found: " + filepath);
+        } else {
+            res = file_response;
         }
     });
     
@@ -340,7 +406,7 @@ Router setupRoutes() {
 }
 
 // Client handler
-void handleClient(int client_fd) {
+void handleClient(int client_fd, const Config& config) {
     stats.active_connections++;
     stats.total_requests++;
     
@@ -350,8 +416,8 @@ void handleClient(int client_fd) {
     if (bytes_read > 0) {
         try {
             HTTPRequest request = HTTPRequest::parse(buffer);
-            HTTPResponse response;
-            Router router = setupRoutes();
+            HTTPResponse response(config.getDocumentRoot());
+            Router router = setupRoutes(config.getDocumentRoot());
             
             logger.log(request.method + " " + request.path + " - Thread: " + 
                       std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
@@ -370,7 +436,7 @@ void handleClient(int client_fd) {
             
         } catch (const std::exception& e) {
             logger.log("ERROR: " + std::string(e.what()));
-            HTTPResponse error_response;
+            HTTPResponse error_response(config.getDocumentRoot());
             error_response.setStatus(500, "Internal Server Error");
             error_response.setBody("<h1>500 - Server Error</h1>");
             std::string error_str = error_response.build();
@@ -383,8 +449,14 @@ void handleClient(int client_fd) {
     stats.active_connections--;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    Config config = Config::parseArgs(argc, argv);
+    logger.setVerbose(config.isVerbose());
+    
     logger.log("🚀 Starting C++ HTTP Server 2.0...");
+    logger.log("📋 Configuration: port=" + std::to_string(config.getPort()) + 
+               ", document_root=" + config.getDocumentRoot() +
+               ", verbose=" + (config.isVerbose() ? "true" : "false"));
     
     // Create socket
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -404,7 +476,7 @@ int main() {
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(8080);
+    address.sin_port = htons(config.getPort());
     
     // Bind socket
     if (bind(server_fd, (sockaddr*)&address, sizeof(address)) < 0) {
@@ -420,13 +492,20 @@ int main() {
         return 1;
     }
     
-    logger.log("✅ Server listening on http://localhost:8080");
+    logger.log("✅ Server listening on http://localhost:" + std::to_string(config.getPort()));
     logger.log("📊 Available routes: /, /api, /stats, /files, /hello, /static/*, /echo (POST)");
     
-    // Create some test files
-    std::ofstream test_file("test.html");
-    test_file << "<html><body><h1>Test File</h1><p>Served by C++ HTTP Server!</p></body></html>";
+    // Create some test files in document root
+    std::string root = config.getDocumentRoot();
+    std::ofstream test_file(root + "/test.html");
+    test_file << "<html><body><h1>Test File</h1><p>Served by C++ HTTP Server from " << root << "!</p></body></html>";
     test_file.close();
+    
+    std::ofstream api_file(root + "/api.json");
+    api_file << "{\"message\": \"Static JSON file from " << root << "\"}";
+    api_file.close();
+
+    logger.debug("Created test files in " + root);
     
     // Main accept loop
     while(true) {
@@ -436,7 +515,7 @@ int main() {
             continue;
         }
         
-        std::thread clientThread(handleClient, client_fd);
+        std::thread clientThread(handleClient, client_fd, std::ref(config));
         clientThread.detach();
     }
     
