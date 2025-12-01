@@ -470,7 +470,16 @@ void handleClient(int client_fd, const Config& config) {
             } else {
                 response.setStatus(404, "Not Found");
                 response.setHeader("Content-Type", "text/html");
-                response.setBody("<h1>404 - Route Not Found</h1><p>Path: " + request.path + "</p>");
+                response.setBody(
+                    "<html><head><title>404 Not Found</title><style>"
+                    "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }"
+                    "h1 { color: #dc3545; }"
+                    "</style></head><body>"
+                    "<h1>404 - Route Not Found</h1>"
+                    "<p>Path: " + request.path + "</p>"
+                    "<a href='/'>Go Home</a>"
+                    "</body></html>"
+                );
                 stats.error_responses++;
             }
             
