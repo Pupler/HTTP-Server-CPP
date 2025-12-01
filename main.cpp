@@ -389,6 +389,35 @@ Router setupRoutes(const std::string& document_root) {
             "</body></html>"
         );
     });
+
+    router.get("/check", [&router](HTTPRequest& req, HTTPResponse& res) {
+        if (req.query_params.count("file")) {
+            std::string filename = req.query_params["file"];
+            std::string full_path = router.getDocumentRoot() + "/" + filename;
+            
+            bool exists = fs::exists(full_path) && fs::is_regular_file(full_path);
+            
+            res.setStatus(200, "OK");
+            res.setHeader("Content-Type", "application/json");
+            res.setBody(
+                "{\n"
+                "  \"file\": \"" + filename + "\",\n"
+                "  \"exists\": " + (exists ? "true" : "false") + ",\n"
+                "  \"path\": \"" + full_path + "\",\n"
+                "  \"timestamp\": " + std::to_string(time(nullptr)) + "\n"
+                "}"
+            );
+        } else {
+            res.setStatus(400, "Bad Request");
+            res.setHeader("Content-Type", "application/json");
+            res.setBody(
+                "{\n"
+                "  \"error\": \"Missing 'file' parameter\",\n"
+                "  \"usage\": \"/check?file=filename.txt\"\n"
+                "}"
+            );
+        }
+    });
     
     // POST example
     router.post("/echo", [](HTTPRequest& req, HTTPResponse& res) {
