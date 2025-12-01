@@ -6,7 +6,7 @@ A minimal, educational HTTP/1.1 server implementation written from scratch in C+
 
 **This is a TEST SERVER for learning purposes only** - designed to understand:
 - Low-level socket programming with BSD sockets
-- HTTP protocol implementation
+- HTTP protocol implementation  
 - Multithreading and concurrent connections
 - Network I/O operations
 - Request/response lifecycle
@@ -14,7 +14,7 @@ A minimal, educational HTTP/1.1 server implementation written from scratch in C+
 
 ## ✨ Features
 
-- **Basic HTTP/1.1** protocol support
+- **HTTP/1.1** protocol support
 - **Multithreaded** client handling
 - **Static file serving** with MIME types
 - **JSON API** endpoints
@@ -23,6 +23,8 @@ A minimal, educational HTTP/1.1 server implementation written from scratch in C+
 - **Live statistics** dashboard
 - **File browser** interface
 - **Custom routing** system
+- **Configurable** port and document root
+- **Verbose logging** mode
 
 ## 🛠️ Tech Stack
 
@@ -30,7 +32,6 @@ A minimal, educational HTTP/1.1 server implementation written from scratch in C+
 - BSD Sockets API
 - POSIX Threads
 - STL Containers & Algorithms
-- CMake build system
 
 ## 🚀 Getting started
 
@@ -38,11 +39,37 @@ A minimal, educational HTTP/1.1 server implementation written from scratch in C+
 # Clone and build
 git clone https://github.com/Pupler/HTTP-Server-CPP.git
 cd HTTP-Server-CPP
-g++ main.cpp -o server
 
-# Run server
+# Compile
+g++ -std=c++17 -pthread main.cpp -o server -lstdc++fs
+
+# Run with defaults (port 8080, current directory)
 ./server
+
+# Run with custom configuration
+./server -p 9000 -d ./public -v
 ```
+
+## ⚙️ Configuration
+
+```bash
+./server -p 8080              # Custom port
+./server -d ./www             # Custom document root  
+./server -v                   # Verbose logging
+./server --help               # Show help
+```
+
+## 🌐 Available Routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/` | Homepage with navigation |
+| `GET` | `/api` | JSON API endpoint |
+| `GET` | `/stats` | Live server statistics |
+| `GET` | `/files` | File browser |
+| `GET` | `/hello?name=User` | Parameter example |
+| `GET` | `/static/{filename}` | Static file serving |
+| `POST` | `/echo` | Echo POST requests |
 
 ## 📄 License
 
