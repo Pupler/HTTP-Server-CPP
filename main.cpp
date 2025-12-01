@@ -335,7 +335,9 @@ Router setupRoutes(const std::string& document_root) {
             "<p><strong>Success Responses:</strong> " + std::to_string(stats.success_responses) + "</p>"
             "<p><strong>Error Responses:</strong> " + std::to_string(stats.error_responses) + "</p>"
             "<p><strong>Uptime:</strong> " + std::to_string(uptime.count()) + " seconds</p>"
-            "<p><strong>Document Root:</strong> " + router.getDocumentRoot() + "</p>"  // ← ТУТ ВИКОРИСТОВУЄТЬСЯ router
+            "<p><strong>Document Root:</strong> " + router.getDocumentRoot() + "</p>"
+            "<p><strong>Total Requests:</strong> " + std::to_string(stats.total_requests) + "</p>"
+            "<p><strong>Active Connections:</strong> " + std::to_string(stats.active_connections) + "</p>"
             "</div></body></html>"
         );
     });
