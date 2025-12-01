@@ -432,6 +432,18 @@ Router setupRoutes(const std::string& document_root) {
             "}"
         );
     });
+
+    router.get("/info", [](HTTPRequest& req, HTTPResponse& res) {
+        res.setStatus(200, "OK");
+        res.setHeader("Content-Type", "application/json");
+        res.setBody(
+            "{\n"
+            "  \"server\": \"C++ HTTP Server\",\n"
+            "  \"status\": \"running\",\n"
+            "  \"timestamp\": " + std::to_string(time(nullptr)) + "\n"
+            "}"
+        );
+    });
     
     // POST example
     router.post("/echo", [](HTTPRequest& req, HTTPResponse& res) {
