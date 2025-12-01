@@ -418,6 +418,18 @@ Router setupRoutes(const std::string& document_root) {
             );
         }
     });
+
+    router.get("/health", [](HTTPRequest& req, HTTPResponse& res) {
+        res.setStatus(200, "OK");
+        res.setHeader("Content-Type", "application/json");
+        res.setBody(
+            "{\n"
+            "  \"status\": \"healthy\",\n"
+            "  \"uptime\": " + std::to_string(stats.total_requests) + ",\n"
+            "  \"timestamp\": " + std::to_string(time(nullptr)) + "\n"
+            "}"
+        );
+    });
     
     // POST example
     router.post("/echo", [](HTTPRequest& req, HTTPResponse& res) {
